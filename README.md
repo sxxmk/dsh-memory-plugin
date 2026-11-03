@@ -15,26 +15,15 @@
 
 ## 安装
 
-编辑 `%USERPROFILE%\.dsh\profiles\web\package.json`，`dependencies` 和 `bundles` **两处都要加**：
+一行：
 
-```json
-{
-  "dependencies": {
-    "@local/dsh-memory-plugin": "github:sxxmk/dsh-memory-plugin"
-  },
-  "dsh": {
-    "profile": {
-      "bundles": [
-        "@deepseek-ai/dsh-base",
-        "@deepseek-ai/dsh-web-app",
-        "@local/dsh-memory-plugin"
-      ]
-    }
-  }
-}
+```powershell
+dsh plugin --profile web add github:sxxmk/dsh-memory-plugin
 ```
 
-然后在 profile 目录执行 `npm install`，重启 `dsh`，最后**刷新浏览器页面**——侧边栏和弹窗是浏览器半，不刷新不出现。
+装完自动注册成 bundle，不用手改 `package.json`。然后重启 `dsh`、**刷新浏览器页面**——侧边栏和弹窗是浏览器半，不刷新不出现。
+
+想改代码而不是用发布版，把最后一段换成 `link:D:/code/dsh-memory-plugin`，之后改完源码重载插件即可。
 
 ## MEMORY.md 的格式
 
