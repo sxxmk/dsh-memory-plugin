@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Memory",
+    "description": "After each turn, asks whether the memorable facts should be written to MEMORY.md, and feeds the latest file back into new conversations."
+  }
+}

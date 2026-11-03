@@ -1,0 +1,10 @@
+# Store LF in the repository on every platform; Windows checkouts may still use
+# CRLF locally. Keeps a public repo diff-clean for contributors on macOS/Linux.
+* text=auto eol=lf
+
+*.svg text
+*.json text
+*.md text
+*.yml text
+*.mjs text
+*.js text

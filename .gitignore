@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+
+# Plugin runtime artefacts — user data, never committed:
+#   MEMORY.md                  memories belong to a workspace, not to this repo
+#   .dsh-memory-declined.json  refusal sidecar
+MEMORY.md
+.dsh-memory-declined.json
+
+# Logs / scratch
+*.log
+*.tmp
+*.bak
+
+# Editor and OS noise
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini

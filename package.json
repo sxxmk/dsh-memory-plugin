@@ -1,0 +1,52 @@
+{
+  "name": "@local/dsh-memory-plugin",
+  "version": "1.1.4",
+  "private": true,
+  "type": "module",
+  "description": "Turn-end memory capture for DSH: analyses each finished turn, asks you to confirm the memorable facts, appends them to the workspace MEMORY.md, and feeds the latest file back into the system prompt.",
+  "license": "MIT",
+  "author": "sxxmk",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sxxmk/dsh-memory-plugin.git"
+  },
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "cordis",
+    "plugin",
+    "memory"
+  ],
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md",
+    "LICENSE",
+    "test/*.mjs"
+  ],
+  "scripts": {
+    "test": "node test/declinement-check.mjs"
+  },
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-sidebar-right"
+      ]
+    }
+  }
+}

@@ -1,0 +1,36 @@
+# Bundle patch for @local/dsh-memory-plugin.
+#
+# One Host row. `config` is the bundle's default configuration; override it from
+# the profile's own cordis.patch.yml with an id-targeted row
+# (`- id: dsh-memory-plugin` + the keys you want to change).
+- insert:
+    - id: dsh-memory-plugin
+      name: '@local/dsh-memory-plugin'
+      config:
+        # File (relative to the session working directory) the memories go to.
+        file: MEMORY.md
+
+        # Sidecar recording items you refused, so a later turn cannot offer them
+        # again. Delete the file to forget the refusals and start clean.
+        declinedFile: .dsh-memory-declined.json
+
+        # Analysis model. Leave provider/model empty to follow whatever model the
+        # conversation itself is using.
+        provider: ''
+        model: ''
+
+        # Thinking effort for the analysis call. Pinned high on purpose: this is a
+        # background summarisation job, it must not inherit the conversation's
+        # MAX effort.
+        reasoningEffort: high
+
+        # Safety valves.
+        maxItems: 5
+        maxItemChars: 320
+        maxTranscriptChars: 14000
+        maxDeclinedPrompt: 60
+        confirmTimeoutMs: 900000
+
+        # Feed the current MEMORY.md back into every new conversation.
+        injectPrompt: true
+        maxInjectChars: 6000
