@@ -21,7 +21,7 @@ import { dirname, join } from 'node:path';
 /* ------------------------------------------------------------------ config */
 
 /** Bumped whenever the Host half changes, so `/status` can prove what is loaded. */
-const PLUGIN_BUILD = 'dsh-memory-plugin/1.2.1';
+const PLUGIN_BUILD = 'dsh-memory-plugin/1.2.3';
 
 const DEFAULTS = {
   enabled: true,
@@ -167,7 +167,14 @@ function transcriptForTurn(session, turn) {
   return lines.join('\n\n');
 }
 
-/** The turn number of the most recent closed, analysable turn of one session. */
+/**
+ * The turn number and the closing `turn/end` sequence of the most recent
+ * closed, analysable turn of one session.
+ *
+ * The sequence is what the browser half anchors the confirmation card on: it
+ * receives the Turn's closing sequence directly, so matching `seq` needs no
+ * assumption about how the two halves number turns.
+ */
 function lastClosedTurn(session) {
   let events;
   try {
@@ -179,7 +186,9 @@ function lastClosedTurn(session) {
     const event = events[index];
     if (!event || event.type !== 'turn/end') continue;
     const kind = event.data?.reason?.kind;
-    if (kind === 'completed' || kind === 'max-tokens') return event.data.turn;
+    if (kind === 'completed' || kind === 'max-tokens') {
+      return { turn: event.data.turn, seq: typeof event.seq === 'number' ? event.seq : null };
+    }
   }
   return null;
 }
@@ -658,10 +667,10 @@ export function apply(ctx, rawConfig) {
     const header = session?.header;
     // Only the top-level, user-facing conversation — never a delegated child.
     if (!header || header.parentSession || header.origin === 'subagent') return;
-    schedule(session, event.data.turn);
+    schedule(session, event.data.turn, typeof event.seq === 'number' ? event.seq : null);
   });
 
-  function schedule(session, turn) {
+  function schedule(session, turn, seq) {
     const sessionId = String(session.id);
     let pipeline = pipelines.get(sessionId);
     if (!pipeline) {
@@ -670,6 +679,7 @@ export function apply(ctx, rawConfig) {
     }
     pipeline.dirty = true;
     pipeline.lastTurn = turn;
+    pipeline.lastSeq = seq ?? null;
     if (pipeline.running || pipeline.timer) return;
     pipeline.timer = later(() => {
       pipeline.timer = null;
@@ -683,7 +693,7 @@ export function apply(ctx, rawConfig) {
     try {
       while (pipeline.dirty) {
         pipeline.dirty = false;
-        await analyse(session, pipeline.lastTurn);
+        await analyse(session, pipeline.lastTurn, pipeline.lastSeq);
       }
     } catch (error) {
       log('error', `analysis failed: ${error?.message ?? error}`);
@@ -818,7 +828,7 @@ export function apply(ctx, rawConfig) {
 
   /* ------------------------------------------------------------ one analysis */
 
-  async function analyse(session, turn) {
+  async function analyse(session, turn, seq) {
     const path = memoryPathFor(session);
     lastMemoryPath = path;
     const memoryText = readLive(path);
@@ -861,8 +871,10 @@ export function apply(ctx, rawConfig) {
       batch.items.push({ id: `m${(batch.nextId += 1)}`, text });
     }
     batch.changedAt = Date.now();
-    // Anchor the card to the reply that produced the newest candidates.
+    // Anchor the card to the reply that produced the newest candidates: the
+    // turn number for humans, the closing sequence for the renderer.
     batch.turn = turn;
+    batch.seq = typeof seq === 'number' ? seq : null;
     noteRun('batch', { session: String(session.id), turn, modelItems: items.length, fresh: fresh.length, queued: batch.items.length });
   }
 
@@ -884,6 +896,7 @@ export function apply(ctx, rawConfig) {
       sessionId,
       path: memoryPathFor(session),
       turn: null,
+      seq: null,
       createdAt: Date.now(),
       changedAt: 0,
       nextId: 0,
@@ -982,13 +995,13 @@ export function apply(ctx, rawConfig) {
             writeJson(res, 404, { ok: false, error: 'no live session with that id' });
             return;
           }
-          const turn = lastClosedTurn(live);
-          if (turn === null) {
+          const location = lastClosedTurn(live);
+          if (location === null) {
             writeJson(res, 409, { ok: false, error: 'that session has no completed turn yet' });
             return;
           }
-          schedule(live, turn);
-          writeJson(res, 202, { ok: true, session: sessionId, turn });
+          schedule(live, location.turn, location.seq);
+          writeJson(res, 202, { ok: true, session: sessionId, turn: location.turn, seq: location.seq });
           return;
         }
 
@@ -1057,6 +1070,7 @@ export function apply(ctx, rawConfig) {
                   sessionId: batch.sessionId,
                   file: batch.path,
                   turn: batch.turn,
+                  seq: batch.seq,
                   createdAt: batch.createdAt,
                   changedAt: batch.changedAt,
                   items: batch.items.map((item) => ({ id: item.id, text: item.text })),

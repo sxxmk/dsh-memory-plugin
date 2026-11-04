@@ -90,6 +90,7 @@ window.__ModuleLoader__.load({
         id: pending.id,
         sessionId: typeof pending.sessionId === 'string' ? pending.sessionId : '',
         turn: typeof pending.turn === 'number' ? pending.turn : null,
+        seq: typeof pending.seq === 'number' ? pending.seq : null,
         cwd: typeof pending.cwd === 'string' ? pending.cwd : '',
         createdAt: pending.createdAt,
         items: items,
@@ -1000,6 +1001,10 @@ window.__ModuleLoader__.load({
       const strings = stringsFor(locale) === STRINGS.zh ? PANEL_STRINGS.zh : PANEL_STRINGS.en;
       const sessionId = props && props.sessionId ? String(props.sessionId) : '';
       const turnNumber = props && props.turn && typeof props.turn.turn === 'number' ? props.turn.turn : null;
+      // The closing sequence of this turn: the owner hands it over, and the
+      // Host records the same number from the turn/end event. Matching on it
+      // avoids assuming the two halves number turns identically.
+      const closingSeq = props && typeof props.seq === 'number' ? props.seq : null;
 
       const [batch, setBatch] = React.useState(null);
       const [selected, setSelected] = React.useState([]);
@@ -1066,7 +1071,7 @@ window.__ModuleLoader__.load({
        * number, never "whatever happens to be pending". */
       React.useEffect(function watchPending() {
         mountedRef.current = true;
-        if (!sessionId || turnNumber === null) {
+        if (!sessionId || (turnNumber === null && closingSeq === null)) {
           return function stop() { mountedRef.current = false; };
         }
         return pendingFeed.subscribe(sessionId, function onPending(pending) {
@@ -1077,7 +1082,13 @@ window.__ModuleLoader__.load({
             if (batchRef.current !== null) clear();
             return;
           }
-          if (pending.sessionId !== sessionId || pending.turn !== turnNumber) return;
+          if (pending.sessionId !== sessionId) return;
+          // Either identifier is enough. Both are unique within a session, so a
+          // match cannot land on two turn tails, and accepting either means a
+          // Host that numbers turns differently from the renderer still works.
+          const mine = (pending.seq !== null && pending.seq === closingSeq)
+            || (pending.turn !== null && pending.turn === turnNumber);
+          if (!mine) return;
           if (answeredRef.current.has(pending.id)) return;
           if (batchRef.current !== null && batchRef.current.id === pending.id) return;
           batchRef.current = pending;
@@ -1086,7 +1097,7 @@ window.__ModuleLoader__.load({
           setSelected(pending.items.map(function toId(item) { return item.id; }));
           setSubmitting(false);
         });
-      }, [sessionId, turnNumber, clear]);
+      }, [sessionId, turnNumber, closingSeq, clear]);
 
       if (batch === null) return null;
       const selectedCount = batch.items.filter(function counted(item) {
