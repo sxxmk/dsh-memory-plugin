@@ -2,7 +2,7 @@
 // Run from the repo root:  node test/declinement-check.mjs
 import { __internals } from '../index.js';
 
-const { restates, similarity, selectCandidates } = __internals;
+const { restates, similarity, selectCandidates, transcriptForTurn } = __internals;
 
 let failures = 0;
 function check(label, actual, expected) {
@@ -93,6 +93,48 @@ count('whitespace collapses before comparing', [
   { kind: 'preference', confidence: 0.9, text: '用户偏好\n  中文回复' },
   { kind: 'preference', confidence: 0.9, text: '用户偏好 中文回复' },
 ], { minConfidence: 0.7 }, 1);
+
+// --- transcript scope: one turn, never the whole conversation ---
+const userMsg = (text) => ({ content: [{ type: 'text', text }] });
+const assistantMsg = (text) => ({ message: { content: [{ type: 'text', text }] } });
+const turnOne = [
+  { type: 'turn/start', seq: 1, data: { turn: 1 } },
+  { type: 'user/message', seq: 2, data: userMsg('OLD-QUESTION') },
+  { type: 'assistant/message', seq: 3, data: assistantMsg('OLD-ANSWER') },
+  { type: 'turn/end', seq: 4, data: { turn: 1, reason: { kind: 'completed' } } },
+];
+const turnTwo = [
+  { type: 'turn/start', seq: 5, data: { turn: 2 } },
+  { type: 'user/message', seq: 6, data: userMsg('NEW-QUESTION') },
+  { type: 'assistant/message', seq: 7, data: assistantMsg('NEW-ANSWER') },
+  { type: 'turn/end', seq: 8, data: { turn: 2, reason: { kind: 'completed' } } },
+];
+const both = [...turnOne, ...turnTwo];
+const sessionOf = (events) => ({ ownEvents: () => events });
+
+const twoText = transcriptForTurn(sessionOf(both), 2);
+check('turn 2 keeps its own exchange', twoText.includes('NEW-QUESTION') && twoText.includes('NEW-ANSWER'), true);
+check('turn 2 drops turn 1', twoText.includes('OLD-QUESTION') || twoText.includes('OLD-ANSWER'), false);
+
+const oneText = transcriptForTurn(sessionOf(both), 1);
+check('turn 1 keeps its own exchange', oneText.includes('OLD-QUESTION'), true);
+check('turn 1 does not reach forward', oneText.includes('NEW-QUESTION'), false);
+
+// A compaction can replace the span holding this turn's start marker. The reply
+// must still be bounded: falling back to the session top would analyse every
+// earlier turn under the guise of reviewing this one.
+const missingStart = [turnOne[0], ...turnOne.slice(1, 3), turnOne[3], ...turnTwo.slice(1)];
+const noStartText = transcriptForTurn(sessionOf(missingStart), 2);
+check('missing turn/start still excludes earlier turns', noStartText.includes('OLD-QUESTION'), false);
+check('missing turn/start keeps the current turn', noStartText.includes('NEW-QUESTION'), true);
+
+// A compaction checkpoint is derived text, not something the user said.
+const withCheckpoint = [
+  ...turnTwo.slice(0, 2),
+  { type: 'user/message', seq: 65, data: userMsg('SUMMARY-OF-EVERYTHING'), surfaceOp: { op: 'replace' } },
+  ...turnTwo.slice(2),
+];
+check('compaction checkpoint is skipped', transcriptForTurn(sessionOf(withCheckpoint), 2).includes('SUMMARY-OF-EVERYTHING'), false);
 
 console.log(failures === 0 ? '\nALL CHECKS PASSED' : `\n${failures} CHECK(S) FAILED`);
 process.exitCode = failures === 0 ? 0 : 1;

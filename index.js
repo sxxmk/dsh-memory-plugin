@@ -21,7 +21,7 @@ import { dirname, join } from 'node:path';
 /* ------------------------------------------------------------------ config */
 
 /** Bumped whenever the Host half changes, so `/status` can prove what is loaded. */
-const PLUGIN_BUILD = 'dsh-memory-plugin/1.4.2';
+const PLUGIN_BUILD = 'dsh-memory-plugin/1.4.3';
 
 const DEFAULTS = {
   enabled: true,
@@ -212,12 +212,27 @@ function transcriptForTurn(session, turn) {
     }
   }
   if (end < 0) return '';
-  let start = 0;
+  // Find this turn's own start. Falling back to the top of the session here
+  // would silently widen the scope from "this exchange" to "the whole
+  // conversation" — and the analysis would then mine old turns for memories
+  // under the guise of reviewing the newest one.
+  let start = -1;
   for (let index = end; index >= 0; index -= 1) {
     const event = events[index];
     if (event.type === 'turn/start' && event.data && event.data.turn === turn) {
       start = index;
       break;
+    }
+  }
+  if (start < 0) {
+    // No start marker (a compaction can replace the span that held it). Bound
+    // the reply to the previous turn's end for the same reason.
+    start = 0;
+    for (let index = end - 1; index >= 0; index -= 1) {
+      if (events[index]?.type === 'turn/end') {
+        start = index + 1;
+        break;
+      }
     }
   }
   const lines = [];
@@ -395,7 +410,7 @@ const DECLINED_VERSION = 1;
  * Pure helpers exported for the offline checks only; the Loader reads `apply`,
  * `inject` and `Config` and ignores everything else.
  */
-export const __internals = { fingerprint, similarity, restates, appendMemories, readDeclined, selectCandidates };
+export const __internals = { fingerprint, similarity, restates, appendMemories, readDeclined, selectCandidates, transcriptForTurn };
 
 /** Read the sidecar list of items the user refused to remember. */
 function readDeclined(path) {
