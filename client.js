@@ -7,12 +7,6 @@ window.__ModuleLoader__.load({
     /** How often the overlay asks the Host for a pending memory batch. */
     const POLL_INTERVAL_MS = 1500;
 
-    /** Entry key inside the frame-wide overlay layer. */
-    const OVERLAY_ID = 'dsh-memory-confirm';
-
-    /** Ids shared by the dialog, its accessible name, and its description. */
-    const TITLE_ID = 'dsh-memory-confirm-title';
-    const SUBTITLE_ID = 'dsh-memory-confirm-subtitle';
 
     /** Host routes. Relative paths keep reverse-proxy/desktop prefixes working. */
     const PENDING_ROUTE = 'dsh-memory-plugin/pending';
@@ -44,245 +38,6 @@ window.__ModuleLoader__.load({
         listLabel: 'Items to remember',
       },
     };
-
-    /**
-     * Component-scoped stylesheet: host theme tokens only, rendered as a
-     * <style> child so unmounting the entry removes it with the component.
-     */
-    const CSS = `
-.dsh-memory-confirm {
-  --dm-surface: var(--dsw-alias-bg-elevated, var(--dsw-alias-bg-layer-1, var(--dsw-alias-bg-overlay)));
-  --dm-text: var(--dsw-alias-text-primary, var(--dsw-alias-label-primary, currentColor));
-  --dm-text-secondary: var(--dsw-alias-text-secondary, var(--dsw-alias-label-secondary, var(--dm-text)));
-  --dm-border: var(--dsw-alias-border-l2, var(--dsw-alias-border-l1, currentColor));
-  --dm-hover: var(--dsw-alias-interactive-bg-hover, transparent);
-  --dm-accent: var(--dsw-alias-brand-primary, var(--dsw-alias-state-business-primary, currentColor));
-  --dm-on-accent: var(--dsw-alias-label-primary-inverted, var(--dsw-alias-label-primary-foreground, var(--dm-text)));
-  --dm-mask: var(--dsw-alias-bg-mask-1, var(--dsw-alias-bg-mask-2, transparent));
-  --dm-focus: var(--dsw-alias-state-business-primary, var(--dm-accent));
-  position: fixed;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
-  padding: 24px;
-  pointer-events: none;
-  color: var(--dm-text);
-  font-family: var(--dsw-font-family, inherit);
-}
-
-.dsh-memory-confirm__backdrop {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
-  padding: 24px;
-  background: var(--dm-mask);
-  pointer-events: auto;
-}
-
-.dsh-memory-confirm__card {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  max-width: 560px;
-  max-height: 70vh;
-  min-height: 0;
-  box-sizing: border-box;
-  overflow: hidden;
-  border: 1px solid var(--dm-border);
-  border-radius: var(--dsw-radius-md, 10px);
-  background: var(--dm-surface);
-  color: var(--dm-text);
-  box-shadow: var(--dsw-elevation-prominent, var(--dsw-shadow-lv3, none));
-  pointer-events: auto;
-  outline: none;
-}
-
-.dsh-memory-confirm__header {
-  padding: 18px 20px 10px 20px;
-}
-
-.dsh-memory-confirm__title {
-  margin: 0;
-  padding-right: 26px;
-  font-size: 16px;
-  font-weight: 600;
-  line-height: 1.4;
-  letter-spacing: 0.01em;
-  color: var(--dm-text);
-}
-
-.dsh-memory-confirm__subtitle {
-  margin: 4px 0 0 0;
-  font-size: 12.5px;
-  line-height: 1.5;
-  color: var(--dm-text-secondary);
-}
-
-.dsh-memory-confirm__file {
-  font-family: var(--ds-font-family-code, var(--dsw-font-family-code, monospace));
-  font-size: 12.5px;
-}
-
-.dsh-memory-confirm__close {
-  position: absolute;
-  top: 12px;
-  right: 14px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border: none;
-  border-radius: var(--dsw-radius-sm, 6px);
-  background: transparent;
-  color: var(--dm-text-secondary);
-  font-family: inherit;
-  font-size: 16px;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.dsh-memory-confirm__close:hover {
-  background: var(--dm-hover);
-  color: var(--dm-text);
-}
-
-.dsh-memory-confirm__body {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding: 2px 14px 14px 14px;
-}
-
-.dsh-memory-confirm__list {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.dsh-memory-confirm__item {
-  display: block;
-  margin: 0;
-  padding: 0;
-}
-
-.dsh-memory-confirm__row {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  width: 100%;
-  box-sizing: border-box;
-  padding: 8px;
-  border-radius: var(--dsw-radius-sm, 8px);
-  cursor: pointer;
-}
-
-.dsh-memory-confirm__row:hover {
-  background: var(--dm-hover);
-}
-
-.dsh-memory-confirm__checkbox {
-  flex: 0 0 auto;
-  width: 15px;
-  height: 15px;
-  margin: 3px 0 0 0;
-  accent-color: var(--dm-accent);
-  cursor: pointer;
-}
-
-.dsh-memory-confirm__text {
-  min-width: 0;
-  font-size: 13.5px;
-  line-height: 1.55;
-  color: var(--dm-text);
-  overflow-wrap: anywhere;
-  word-break: break-word;
-  white-space: pre-wrap;
-}
-
-.dsh-memory-confirm__footer {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  padding: 12px 20px 16px 20px;
-  border-top: 1px solid var(--dm-border);
-  background: var(--dm-surface);
-}
-
-.dsh-memory-confirm__button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 32px;
-  padding: 0 14px;
-  border: 1px solid transparent;
-  border-radius: var(--dsw-radius-sm, 8px);
-  background: transparent;
-  color: var(--dm-text);
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 1;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.dsh-memory-confirm__button:disabled {
-  opacity: 0.55;
-  cursor: default;
-}
-
-.dsh-memory-confirm__button--secondary {
-  border-color: var(--dm-border);
-}
-
-.dsh-memory-confirm__button--secondary:hover:not(:disabled) {
-  background: var(--dm-hover);
-}
-
-.dsh-memory-confirm__button--primary {
-  border-color: transparent;
-  background: var(--dsw-alias-button-primary-fill, var(--dm-accent));
-  color: var(--dm-on-accent);
-}
-
-.dsh-memory-confirm__button--primary:hover:not(:disabled) {
-  background: var(--dsw-alias-button-primary-hover, var(--dsw-alias-button-primary-fill, var(--dm-accent)));
-}
-
-.dsh-memory-confirm__button:focus-visible,
-.dsh-memory-confirm__close:focus-visible,
-.dsh-memory-confirm__checkbox:focus-visible,
-.dsh-memory-confirm__card:focus-visible {
-  outline: 2px solid var(--dm-focus);
-  outline-offset: 2px;
-}
-
-@media (max-width: 560px) {
-  .dsh-memory-confirm {
-    padding: 12px;
-  }
-  .dsh-memory-confirm__backdrop {
-    align-items: flex-end;
-    padding: 12px;
-  }
-  .dsh-memory-confirm__card {
-    max-height: 82vh;
-  }
-}
-`;
 
     /**
      * Resolve a Host route relative to the page's base URL, so a
@@ -334,284 +89,11 @@ window.__ModuleLoader__.load({
       return {
         id: pending.id,
         sessionId: typeof pending.sessionId === 'string' ? pending.sessionId : '',
+        turn: typeof pending.turn === 'number' ? pending.turn : null,
         cwd: typeof pending.cwd === 'string' ? pending.cwd : '',
         createdAt: pending.createdAt,
         items: items,
       };
-    }
-
-    /**
-     * The `shell.overlay` entry: one frame-wide confirmation dialog. It polls
-     * the Host for a pending batch, asks which points to remember, and POSTs
-     * the decision. The wrapper is always click-through; only the card opts
-     * back into pointer events.
-     */
-    function MemoryConfirmEntry(props) {
-      const locale = props && props.locale ? props.locale : undefined;
-      const strings = stringsFor(locale);
-
-      const [batch, setBatch] = React.useState(null);
-      const [selected, setSelected] = React.useState([]);
-      const [submitting, setSubmitting] = React.useState(false);
-
-      const handledRef = React.useRef(new Set());
-      const batchRef = React.useRef(null);
-      const submittingRef = React.useRef(false);
-      const mountedRef = React.useRef(false);
-      const pollControllerRef = React.useRef(null);
-      const decideControllerRef = React.useRef(null);
-      const cardRef = React.useRef(null);
-
-      const closeDialog = React.useCallback(function closeDialog() {
-        batchRef.current = null;
-        submittingRef.current = false;
-        if (!mountedRef.current) return;
-        setBatch(null);
-        setSelected([]);
-        setSubmitting(false);
-      }, []);
-
-      const decide = React.useCallback(function decide(accepted) {
-        const pending = batchRef.current;
-        if (pending === null || submittingRef.current) return;
-        submittingRef.current = true;
-        setSubmitting(true);
-        let controller = null;
-        if (typeof AbortController === 'function') {
-          controller = new AbortController();
-          decideControllerRef.current = controller;
-        }
-        let request;
-        try {
-          request = fetch(routeUrl(DECIDE_ROUTE), {
-            method: 'POST',
-            headers: { 'content-type': 'application/json', accept: 'application/json' },
-            body: JSON.stringify({ id: pending.id, accepted: accepted }),
-            signal: controller === null ? undefined : controller.signal,
-          });
-        } catch (error) {
-          request = Promise.resolve();
-        }
-        Promise.resolve(request)
-          .catch(function ignoreFailure() {})
-          .then(function settle() {
-            decideControllerRef.current = null;
-            if (mountedRef.current) closeDialog();
-          });
-      }, [closeDialog]);
-
-      const skipAll = React.useCallback(function skipAll() {
-        decide([]);
-      }, [decide]);
-
-      const confirmSelected = React.useCallback(function confirmSelected() {
-        const pending = batchRef.current;
-        if (pending === null) return;
-        const accepted = pending.items
-          .filter(function acceptedOnly(item) { return isSelected(selected, item.id); })
-          .map(function toId(item) { return item.id; });
-        decide(accepted);
-      }, [decide, selected]);
-
-      const toggleItem = React.useCallback(function toggleItem(itemId) {
-        setSelected(function update(current) {
-          if (isSelected(current, itemId)) {
-            return current.filter(function others(id) { return id !== itemId; });
-          }
-          return current.concat([itemId]);
-        });
-      }, []);
-
-      const openBatch = React.useCallback(function openBatch(pending) {
-        if (pending === null) return;
-        if (batchRef.current !== null) return;
-        if (handledRef.current.has(pending.id)) return;
-        handledRef.current.add(pending.id);
-        batchRef.current = pending;
-        submittingRef.current = false;
-        setBatch(pending);
-        setSelected(pending.items.map(function toId(item) { return item.id; }));
-        setSubmitting(false);
-      }, []);
-
-      React.useEffect(function startPolling() {
-        mountedRef.current = true;
-        let disposed = false;
-        let inFlight = false;
-        let controller = null;
-        if (typeof AbortController === 'function') {
-          controller = new AbortController();
-          pollControllerRef.current = controller;
-        }
-
-        function poll() {
-          if (disposed || inFlight) return;
-          inFlight = true;
-          let request;
-          try {
-            request = fetch(routeUrl(PENDING_ROUTE), {
-              method: 'GET',
-              headers: { accept: 'application/json' },
-              cache: 'no-store',
-              signal: controller === null ? undefined : controller.signal,
-            });
-          } catch (error) {
-            inFlight = false;
-            return;
-          }
-          Promise.resolve(request)
-            .then(function readBody(response) {
-              if (!response || !response.ok) return null;
-              return response.json();
-            })
-            .then(function consume(data) {
-              if (disposed || !data || typeof data !== 'object') return;
-              const pending = normalizeBatch(data.pending);
-              if (pending === null) return;
-              openBatch(pending);
-            })
-            .catch(function ignoreFailure() {})
-            .then(function finish() {
-              inFlight = false;
-            });
-        }
-
-        poll();
-        const timer = setInterval(poll, POLL_INTERVAL_MS);
-
-        return function stopPolling() {
-          disposed = true;
-          mountedRef.current = false;
-          clearInterval(timer);
-          if (pollControllerRef.current !== null) {
-            try {
-              pollControllerRef.current.abort();
-            } catch (error) {}
-            pollControllerRef.current = null;
-          }
-          if (decideControllerRef.current !== null) {
-            try {
-              decideControllerRef.current.abort();
-            } catch (error) {}
-            decideControllerRef.current = null;
-          }
-        };
-      }, [openBatch]);
-
-      React.useEffect(function bindDialog() {
-        if (batch === null) return undefined;
-        const card = cardRef.current;
-        if (card && typeof card.focus === 'function') {
-          try {
-            card.focus();
-          } catch (error) {}
-        }
-        function onKeyDown(event) {
-          if (event.key === 'Escape') {
-            event.preventDefault();
-            skipAll();
-          }
-        }
-        window.addEventListener('keydown', onKeyDown);
-        return function unbindDialog() {
-          window.removeEventListener('keydown', onKeyDown);
-        };
-      }, [batch, skipAll]);
-
-      const open = batch !== null;
-      const selectedCount = open
-        ? batch.items.filter(function counted(item) { return isSelected(selected, item.id); }).length
-        : 0;
-      const targetParts = strings.target.split('{file}');
-
-      return h('div', {
-        className: 'dsh-memory-confirm',
-        style: { pointerEvents: 'none' },
-      },
-        h('style', { key: 'dsh-memory-confirm-styles' }, CSS),
-        open
-          ? h('div', {
-            key: 'dsh-memory-confirm-backdrop',
-            className: 'dsh-memory-confirm__backdrop',
-            role: 'presentation',
-            onClick: function onBackdropClick(event) {
-              if (event.target === event.currentTarget) skipAll();
-            },
-          }, h('div', {
-            className: 'dsh-memory-confirm__card',
-            role: 'dialog',
-            'aria-modal': 'true',
-            'aria-labelledby': TITLE_ID,
-            'aria-describedby': SUBTITLE_ID,
-            tabIndex: -1,
-            ref: cardRef,
-            onClick: function stopCardClick(event) {
-              event.stopPropagation();
-            },
-          },
-            h('div', { className: 'dsh-memory-confirm__header' },
-              h('h2', {
-                className: 'dsh-memory-confirm__title',
-                id: TITLE_ID,
-              }, strings.title),
-              h('p', {
-                className: 'dsh-memory-confirm__subtitle',
-                id: SUBTITLE_ID,
-              },
-                targetParts[0],
-                h('span', {
-                  key: 'dsh-memory-confirm-file',
-                  className: 'dsh-memory-confirm__file',
-                }, strings.file),
-                targetParts.length > 1 ? targetParts[1] : null
-              )
-            ),
-            h('button', {
-              type: 'button',
-              className: 'dsh-memory-confirm__close',
-              'aria-label': strings.close,
-              title: strings.close,
-              onClick: skipAll,
-            }, strings.closeGlyph),
-            h('div', { className: 'dsh-memory-confirm__body' },
-              h('ul', {
-                className: 'dsh-memory-confirm__list',
-                'aria-label': strings.listLabel,
-              }, batch.items.map(function renderItem(item, index) {
-                const checked = isSelected(selected, item.id);
-                return h('li', {
-                  className: 'dsh-memory-confirm__item',
-                  key: item.id + ':' + String(index),
-                }, h('label', { className: 'dsh-memory-confirm__row' },
-                  h('input', {
-                    type: 'checkbox',
-                    className: 'dsh-memory-confirm__checkbox',
-                    checked: checked,
-                    onChange: function onChange() {
-                      toggleItem(item.id);
-                    },
-                  }),
-                  h('span', { className: 'dsh-memory-confirm__text' }, item.text)
-                ));
-              }))
-            ),
-            h('div', { className: 'dsh-memory-confirm__footer' },
-              h('button', {
-                type: 'button',
-                className: 'dsh-memory-confirm__button dsh-memory-confirm__button--secondary',
-                disabled: submitting,
-                onClick: skipAll,
-              }, strings.skipAll),
-              h('button', {
-                type: 'button',
-                className: 'dsh-memory-confirm__button dsh-memory-confirm__button--primary',
-                disabled: submitting,
-                onClick: confirmSelected,
-              }, strings.confirm.replace('{n}', String(selectedCount)))
-            )
-          ))
-          : null
-      );
     }
 
     /* ------------------------------------------------- sidebar panel + note */
@@ -645,6 +127,7 @@ window.__ModuleLoader__.load({
         extractingLonger: '提取还在继续，可以先做别的',
         analyseFailed: '上次自动提取失败：{msg}',
         noSession: '还没有会话，打开一个对话后再看。',
+        inlineHint: '确认后才写入，未勾选的不再提',
       },
       en: {
         tab: 'Memory',
@@ -673,6 +156,7 @@ window.__ModuleLoader__.load({
         extractingLonger: 'Extraction continues — you can keep working',
         analyseFailed: 'Last extraction failed: {msg}',
         noSession: 'Open a conversation first.',
+        inlineHint: 'Written only once you confirm; unticked items are never offered again',
       },
     };
 
@@ -943,6 +427,142 @@ window.__ModuleLoader__.load({
   .dsh-memory-note__dots i { animation: none; }
   .dsh-memory-note__dot::after { opacity: 0; }
   .dsh-memory-note__dots i { opacity: 0.55; }
+}
+
+/* The confirmation card, rendered inline under the assistant reply that
+ * produced the candidates. It is a conversation element, not a modal: no
+ * backdrop, no focus trap, no Escape handling. */
+.dsh-memory-card {
+  margin: 10px 0 2px 0;
+  box-sizing: border-box;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-md, 12px);
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  font-family: var(--dsw-font-family, inherit);
+  overflow: hidden;
+  animation: dsh-memory-card-in 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes dsh-memory-card-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+.dsh-memory-card__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 14px 4px 14px;
+}
+.dsh-memory-card__dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--dsw-alias-state-business-primary, #4176e6);
+}
+.dsh-memory-card__title {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.dsh-memory-card__file {
+  padding: 0 14px 8px 29px;
+  font-family: var(--ds-font-family-code, var(--dsw-font-family-code, monospace));
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--dsw-alias-label-tertiary, var(--dsw-alias-label-secondary));
+  overflow-wrap: anywhere;
+}
+.dsh-memory-card__list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0;
+  padding: 0 8px 2px 8px;
+  list-style: none;
+}
+.dsh-memory-card__row {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 7px 8px;
+  border-radius: var(--dsw-radius-sm, 8px);
+  cursor: pointer;
+}
+.dsh-memory-card__row:hover {
+  background: var(--dsw-alias-interactive-bg-hover, transparent);
+}
+.dsh-memory-card__checkbox {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  margin: 3px 0 0 0;
+  accent-color: var(--dsw-alias-state-business-primary, #4176e6);
+  cursor: pointer;
+}
+.dsh-memory-card__text {
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--dsw-alias-label-primary);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+.dsh-memory-card__foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 8px 14px 12px 14px;
+}
+.dsh-memory-card__hint {
+  margin-right: auto;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--dsw-alias-label-tertiary, var(--dsw-alias-label-secondary));
+}
+.dsh-memory-card__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 30px;
+  padding: 0 13px;
+  border: 1px solid transparent;
+  border-radius: var(--dsw-radius-sm, 8px);
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.dsh-memory-card__btn--ghost {
+  border-color: var(--dsw-alias-border-l2);
+}
+.dsh-memory-card__btn--ghost:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover, transparent);
+}
+.dsh-memory-card__btn--primary {
+  background: var(--dsw-alias-button-primary-fill, var(--dsw-alias-brand-primary));
+  color: var(--dsw-alias-label-primary-inverted, #fff);
+}
+.dsh-memory-card__btn--primary:hover:not(:disabled) {
+  background: var(--dsw-alias-button-primary-hover, var(--dsw-alias-button-primary-fill));
+}
+.dsh-memory-card__btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.dsh-memory-card__btn:focus-visible,
+.dsh-memory-card__checkbox:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary, #4176e6);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dsh-memory-card { animation: none; }
 }
 `;
 
@@ -1291,6 +911,229 @@ window.__ModuleLoader__.load({
       );
     }
 
+    /**
+     * One poll per session, shared by every mounted turn tail.
+     *
+     * A turn tail renders once per completed turn, so a long conversation keeps
+     * hundreds of them mounted. Letting each poll the Host would mean hundreds
+     * of requests every 1.5 s; instead they all subscribe to this feed, which
+     * runs a single timer while at least one listener is attached and stops as
+     * soon as the last one unsubscribes.
+     */
+    const pendingFeed = (function createPendingFeed() {
+      const feeds = new Map();
+
+      function ensure(sessionId) {
+        let feed = feeds.get(sessionId);
+        if (feed === undefined) {
+          feed = { listeners: new Set(), timer: null, inFlight: false, last: null };
+          feeds.set(sessionId, feed);
+        }
+        return feed;
+      }
+
+      function broadcast(feed, value) {
+        feed.last = value;
+        for (const listener of Array.from(feed.listeners)) {
+          try {
+            listener(value);
+          } catch (error) { /* one broken subscriber must not stop the others */ }
+        }
+      }
+
+      function publish(sessionId) {
+        const feed = feeds.get(sessionId);
+        if (feed === undefined) return;
+        if (feed.inFlight) return;
+        feed.inFlight = true;
+        const url = routeUrl(PENDING_ROUTE) + '?session=' + encodeURIComponent(sessionId);
+        Promise.resolve()
+          .then(function ask() {
+            return fetch(url, { headers: { accept: 'application/json' }, cache: 'no-store' });
+          })
+          .then(function readBody(response) {
+            if (!response || !response.ok) return undefined;
+            return response.json();
+          })
+          .then(function apply(data) {
+            if (data === undefined) return;
+            broadcast(feed, data && typeof data === 'object' ? normalizeBatch(data.pending) : null);
+          })
+          .catch(function ignore() {})
+          .then(function done() { feed.inFlight = false; });
+      }
+
+      return {
+        subscribe(sessionId, listener) {
+          const feed = ensure(sessionId);
+          feed.listeners.add(listener);
+          if (feed.timer === null) {
+            publish(sessionId);
+            feed.timer = setInterval(function tick() { publish(sessionId); }, POLL_INTERVAL_MS);
+          } else {
+            listener(feed.last);
+          }
+          return function unsubscribe() {
+            feed.listeners.delete(listener);
+            if (feed.listeners.size === 0 && feed.timer !== null) {
+              clearInterval(feed.timer);
+              feed.timer = null;
+            }
+          };
+        },
+      };
+    })();
+
+    /**
+     * `conversation.chat.turnTail` entry: the confirmation card, rendered
+     * inline under the assistant reply of the turn that produced the
+     * candidates.
+     *
+     * It is deliberately not a modal. A frame-wide overlay shows up in every
+     * window, including a session that did not generate the batch, which makes
+     * it impossible to tell which conversation is being written to. Anchoring
+     * it to its own turn means the card appears in exactly one place — under
+     * the reply it came from — and disappears from that spot once answered.
+     */
+    function MemoryInlineConfirm(props) {
+      const locale = props && props.locale ? props.locale : undefined;
+      const strings = stringsFor(locale) === STRINGS.zh ? PANEL_STRINGS.zh : PANEL_STRINGS.en;
+      const sessionId = props && props.sessionId ? String(props.sessionId) : '';
+      const turnNumber = props && props.turn && typeof props.turn.turn === 'number' ? props.turn.turn : null;
+
+      const [batch, setBatch] = React.useState(null);
+      const [selected, setSelected] = React.useState([]);
+      const [submitting, setSubmitting] = React.useState(false);
+      const mountedRef = React.useRef(true);
+      const batchRef = React.useRef(null);
+      const submittingRef = React.useRef(false);
+      const answeredRef = React.useRef(new Set());
+
+      const clear = React.useCallback(function clear() {
+        batchRef.current = null;
+        submittingRef.current = false;
+        if (!mountedRef.current) return;
+        setBatch(null);
+        setSelected([]);
+        setSubmitting(false);
+      }, []);
+
+      const decide = React.useCallback(function decide(accepted) {
+        const pending = batchRef.current;
+        if (pending === null || submittingRef.current) return;
+        submittingRef.current = true;
+        answeredRef.current.add(pending.id);
+        setSubmitting(true);
+        let request;
+        try {
+          request = fetch(routeUrl(DECIDE_ROUTE), {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', accept: 'application/json' },
+            body: JSON.stringify({ id: pending.id, accepted: accepted }),
+          });
+        } catch (error) {
+          request = Promise.resolve();
+        }
+        Promise.resolve(request)
+          .catch(function ignoreFailure() {})
+          .then(function settle() {
+            if (mountedRef.current) clear();
+          });
+      }, [clear]);
+
+      const skipAll = React.useCallback(function skipAll() { decide([]); }, [decide]);
+
+      const confirmSelected = React.useCallback(function confirmSelected() {
+        const pending = batchRef.current;
+        if (pending === null) return;
+        const accepted = pending.items
+          .filter(function acceptedOnly(item) { return isSelected(selected, item.id); })
+          .map(function toId(item) { return item.id; });
+        decide(accepted);
+      }, [decide, selected]);
+
+      const toggleItem = React.useCallback(function toggleItem(itemId) {
+        setSelected(function update(current) {
+          if (isSelected(current, itemId)) {
+            return current.filter(function others(id) { return id !== itemId; });
+          }
+          return current.concat([itemId]);
+        });
+      }, []);
+
+      /* Every mounted turn tail subscribes to the session's single feed and
+       * keeps only the batch that names its own turn — the anchor is the turn
+       * number, never "whatever happens to be pending". */
+      React.useEffect(function watchPending() {
+        mountedRef.current = true;
+        if (!sessionId || turnNumber === null) {
+          return function stop() { mountedRef.current = false; };
+        }
+        return pendingFeed.subscribe(sessionId, function onPending(pending) {
+          if (!mountedRef.current) return;
+          if (pending === null) {
+            // The Host retired it: answered here, expired, or answered
+            // elsewhere. The card must not linger.
+            if (batchRef.current !== null) clear();
+            return;
+          }
+          if (pending.sessionId !== sessionId || pending.turn !== turnNumber) return;
+          if (answeredRef.current.has(pending.id)) return;
+          if (batchRef.current !== null && batchRef.current.id === pending.id) return;
+          batchRef.current = pending;
+          submittingRef.current = false;
+          setBatch(pending);
+          setSelected(pending.items.map(function toId(item) { return item.id; }));
+          setSubmitting(false);
+        });
+      }, [sessionId, turnNumber, clear]);
+
+      if (batch === null) return null;
+      const selectedCount = batch.items.filter(function counted(item) {
+        return isSelected(selected, item.id);
+      }).length;
+      const titleId = 'dsh-memory-card-title-' + String(turnNumber);
+
+      return h('div', { className: 'dsh-memory-card', 'aria-labelledby': titleId },
+        h('style', null, PANEL_CSS),
+        h('div', { className: 'dsh-memory-card__head' },
+          h('span', { className: 'dsh-memory-card__dot', 'aria-hidden': true }),
+          h('span', { className: 'dsh-memory-card__title', id: titleId }, strings.title)
+        ),
+        h('div', { className: 'dsh-memory-card__file' }, batch.file || ''),
+        h('ul', { className: 'dsh-memory-card__list', 'aria-label': strings.listLabel },
+          batch.items.map(function renderItem(item, index) {
+            return h('li', { key: item.id + ':' + String(index) },
+              h('label', { className: 'dsh-memory-card__row' },
+                h('input', {
+                  type: 'checkbox',
+                  className: 'dsh-memory-card__checkbox',
+                  checked: isSelected(selected, item.id),
+                  onChange: function onChange() { toggleItem(item.id); },
+                }),
+                h('span', { className: 'dsh-memory-card__text' }, item.text)
+              )
+            );
+          })
+        ),
+        h('div', { className: 'dsh-memory-card__foot' },
+          h('span', { className: 'dsh-memory-card__hint' }, strings.inlineHint),
+          h('button', {
+            type: 'button',
+            className: 'dsh-memory-card__btn dsh-memory-card__btn--ghost',
+            disabled: submitting,
+            onClick: skipAll,
+          }, strings.skipAll),
+          h('button', {
+            type: 'button',
+            className: 'dsh-memory-card__btn dsh-memory-card__btn--primary',
+            disabled: submitting,
+            onClick: confirmSelected,
+          }, strings.confirm.replace('{n}', String(selectedCount)))
+        )
+      );
+    }
+
     return {
       // `sidebarRightTabs` is a hard dependency: the module must not activate
       // before the tab registry exists, or the sidebar tab would silently never
@@ -1302,13 +1145,15 @@ window.__ModuleLoader__.load({
           return stringsFor(locale) === STRINGS.zh ? PANEL_STRINGS.zh : PANEL_STRINGS.en;
         };
 
-        function MemoryOverlayEntry() {
-          return h(MemoryConfirmEntry, { locale: locale });
+        /* Confirmation is anchored inside the conversation it belongs to; there
+         * is no frame-wide overlay entry on purpose. */
+        function MemoryCardEntry(props) {
+          return h(MemoryInlineConfirm, Object.assign({}, props, { locale: locale }));
         }
-        ctx.slots.inject('shell.overlay', function () {
+        ctx.slots.inject('conversation.chat.turnTail', function () {
           return ctx.slots.register(
-            { name: 'shell.overlay', id: OVERLAY_ID, order: 100, label: function () { return 'Memory'; } },
-            MemoryOverlayEntry,
+            { name: 'conversation.chat.turnTail', id: 'dsh-memory-confirm', order: 5 },
+            MemoryCardEntry,
           );
         });
 

@@ -21,7 +21,7 @@ import { dirname, join } from 'node:path';
 /* ------------------------------------------------------------------ config */
 
 /** Bumped whenever the Host half changes, so `/status` can prove what is loaded. */
-const PLUGIN_BUILD = 'dsh-memory-plugin/1.1.6';
+const PLUGIN_BUILD = 'dsh-memory-plugin/1.2.1';
 
 const DEFAULTS = {
   enabled: true,
@@ -861,16 +861,19 @@ export function apply(ctx, rawConfig) {
       batch.items.push({ id: `m${(batch.nextId += 1)}`, text });
     }
     batch.changedAt = Date.now();
+    // Anchor the card to the reply that produced the newest candidates.
+    batch.turn = turn;
     noteRun('batch', { session: String(session.id), turn, modelItems: items.length, fresh: fresh.length, queued: batch.items.length });
   }
 
   /* -------------------------------------------------- confirmation handshake */
 
   /**
-   * One batch per session. The browser half is frame-wide, so `/pending` hands
-   * out one batch at a time and the next one surfaces after the current is
-   * answered; each carries the `file` it will write, so the dialog is never
-   * ambiguous about which workspace it is talking about.
+   * One batch per session. The confirmation card is rendered inline by the
+   * conversation view of the session that owns it — anchored to the turn whose
+   * reply produced the candidates — so a batch never surfaces in another
+   * session's window. Each batch carries the `file` it will write and the
+   * `turn` it belongs to.
    */
   function currentBatch(session) {
     const sessionId = String(session.id);
@@ -880,6 +883,7 @@ export function apply(ctx, rawConfig) {
       id: `batch-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
       sessionId,
       path: memoryPathFor(session),
+      turn: null,
       createdAt: Date.now(),
       changedAt: 0,
       nextId: 0,
@@ -1040,13 +1044,19 @@ export function apply(ctx, rawConfig) {
         }
 
         if (method === '/pending' && req.method === 'GET') {
-          const batch = nextPendingBatch();
+          // `?session=` scopes the answer to one conversation: the card belongs
+          // to the turn that produced it, and must never appear in a window
+          // showing a different session. Without it, the oldest batch overall
+          // is returned, which keeps hand-written probes simple.
+          const wantedSession = requestUrl.searchParams.get('session');
+          const batch = wantedSession ? pendingBatches.get(wantedSession) ?? null : nextPendingBatch();
           writeJson(res, 200, {
             pending: batch
               ? {
                   id: batch.id,
                   sessionId: batch.sessionId,
                   file: batch.path,
+                  turn: batch.turn,
                   createdAt: batch.createdAt,
                   changedAt: batch.changedAt,
                   items: batch.items.map((item) => ({ id: item.id, text: item.text })),
