@@ -1,6 +1,6 @@
 {
   "name": "@local/dsh-memory-plugin",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "private": true,
   "type": "module",
   "description": "Turn-end memory capture for DSH: analyses each finished turn, asks you to confirm the memorable facts, appends them to the workspace MEMORY.md, and feeds the latest file back into the system prompt.",

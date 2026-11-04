@@ -21,7 +21,7 @@ import { dirname, join } from 'node:path';
 /* ------------------------------------------------------------------ config */
 
 /** Bumped whenever the Host half changes, so `/status` can prove what is loaded. */
-const PLUGIN_BUILD = 'dsh-memory-plugin/1.1.5';
+const PLUGIN_BUILD = 'dsh-memory-plugin/1.1.6';
 
 const DEFAULTS = {
   enabled: true,

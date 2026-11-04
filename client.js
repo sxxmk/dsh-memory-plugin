@@ -875,14 +875,19 @@ window.__ModuleLoader__.load({
   border-radius: 999px;
   font-family: var(--dsw-font-family, inherit);
   font-size: 12.5px;
-  font-weight: 500;
+  font-weight: 600;
   line-height: 1.4;
   letter-spacing: 0.01em;
-  color: var(--dsw-alias-brand-primary);
-  background: var(--dsw-alias-bg-layer-1);
-  background: color-mix(in srgb, var(--dsw-alias-brand-primary) 9%, transparent);
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-color: color-mix(in srgb, var(--dsw-alias-brand-primary) 30%, var(--dsw-alias-border-l1));
+  /* The accent is the product blue, not --dsw-alias-brand-primary: that token
+   * is deliberately neutral (near-black on light, near-white on dark), so using
+   * it here renders a grey pill. Pulling the label colour 15% toward the accent
+   * keeps AA contrast on white while staying unmistakably blue. */
+  color: var(--dsw-alias-state-business-primary, #4176e6);
+  color: color-mix(in srgb, var(--dsw-alias-state-business-primary, #4176e6) 85%, var(--dsw-alias-label-primary));
+  background: transparent;
+  background: color-mix(in srgb, var(--dsw-alias-state-business-primary, #4176e6) 10%, transparent);
+  border: 1px solid transparent;
+  border-color: color-mix(in srgb, var(--dsw-alias-state-business-primary, #4176e6) 32%, transparent);
   user-select: none;
   animation: dsh-memory-note-enter 240ms cubic-bezier(0.22, 1, 0.36, 1);
 }
