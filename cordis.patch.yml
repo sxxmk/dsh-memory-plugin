@@ -24,8 +24,13 @@
         # MAX effort.
         reasoningEffort: high
 
-        # Safety valves.
-        maxItems: 5
+        # Safety valves. The extractor is tuned to record nothing most turns;
+        # these bound the damage when it is wrong.
+        maxItems: 3
+        # The model reports a confidence per candidate and anything below this
+        # is dropped before you ever see it. Raise it to be stricter, lower it
+        # if genuinely useful facts stop appearing.
+        minConfidence: 0.6
         maxItemChars: 320
         maxTranscriptChars: 14000
         maxDeclinedPrompt: 60

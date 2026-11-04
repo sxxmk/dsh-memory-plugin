@@ -2,7 +2,7 @@
 // Run from the repo root:  node test/declinement-check.mjs
 import { __internals } from '../index.js';
 
-const { restates, similarity } = __internals;
+const { restates, similarity, selectCandidates } = __internals;
 
 let failures = 0;
 function check(label, actual, expected) {
@@ -55,6 +55,44 @@ const b = '助手应当以中文回复';
 check('similarity symmetric', similarity(a, b) === similarity(b, a), true);
 check('similarity identity', similarity(a, a) === 1, true);
 check('empty candidate never matches', restates('', []), true);
+
+// --- confidence gate: the extractor's own claim decides what reaches the user ---
+function count(label, items, options, expected) {
+  const got = selectCandidates(items, options).length;
+  const ok = got === expected;
+  if (!ok) failures += 1;
+  console.log(`${ok ? 'PASS' : 'FAIL'}  ${label}  (got ${got}, want ${expected})`);
+}
+
+count('below threshold is dropped', [
+  { kind: 'convention', confidence: 0.4, text: '测试命令是 pnpm test' },
+], { minConfidence: 0.7 }, 0);
+count('at threshold is kept', [
+  { kind: 'convention', confidence: 0.7, text: '测试命令是 pnpm test' },
+], { minConfidence: 0.7 }, 1);
+count('off-taxonomy kind is dropped', [
+  { kind: 'knowledge', confidence: 0.95, text: '该环境支持 color-mix()' },
+], { minConfidence: 0.7 }, 0);
+count('missing kind but confident is kept', [
+  { confidence: 0.9, text: '用户偏好中文回复' },
+], { minConfidence: 0.7 }, 1);
+count('legacy shape without confidence is not gated', [
+  { text: '用户偏好中文回复' },
+], { minConfidence: 0.7 }, 1);
+count('cap is enforced', [
+  { kind: 'preference', confidence: 0.9, text: '用户偏好中文回复' },
+  { kind: 'convention', confidence: 0.9, text: '测试命令是 pnpm test' },
+  { kind: 'decision', confidence: 0.9, text: '因为部署顺序，迁移必须手工执行' },
+  { kind: 'correction', confidence: 0.9, text: '不要在回复里用表情符号' },
+], { minConfidence: 0.7, maxItems: 2 }, 2);
+count('duplicates collapse', [
+  { kind: 'preference', confidence: 0.9, text: '用户偏好中文回复。' },
+  { kind: 'preference', confidence: 0.9, text: '用户偏好中文回复。' },
+], { minConfidence: 0.7 }, 1);
+count('whitespace collapses before comparing', [
+  { kind: 'preference', confidence: 0.9, text: '用户偏好\n  中文回复' },
+  { kind: 'preference', confidence: 0.9, text: '用户偏好 中文回复' },
+], { minConfidence: 0.7 }, 1);
 
 console.log(failures === 0 ? '\nALL CHECKS PASSED' : `\n${failures} CHECK(S) FAILED`);
 process.exitCode = failures === 0 ? 0 : 1;

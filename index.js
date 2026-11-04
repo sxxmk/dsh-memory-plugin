@@ -21,7 +21,7 @@ import { dirname, join } from 'node:path';
 /* ------------------------------------------------------------------ config */
 
 /** Bumped whenever the Host half changes, so `/status` can prove what is loaded. */
-const PLUGIN_BUILD = 'dsh-memory-plugin/1.2.3';
+const PLUGIN_BUILD = 'dsh-memory-plugin/1.3.5';
 
 const DEFAULTS = {
   enabled: true,
@@ -31,7 +31,8 @@ const DEFAULTS = {
   provider: '',
   model: '',
   reasoningEffort: 'high',
-  maxItems: 5,
+  maxItems: 3,
+  minConfidence: 0.6,
   maxItemChars: 320,
   maxTranscriptChars: 14000,
   confirmTimeoutMs: 900000,
@@ -57,6 +58,9 @@ function normalizeConfig(raw) {
     const value = raw[key];
     if (typeof value === 'number' && Number.isFinite(value) && value > 0) config[key] = Math.floor(value);
   }
+  if (typeof raw.minConfidence === 'number' && Number.isFinite(raw.minConfidence)) {
+    config.minConfidence = Math.min(1, Math.max(0, raw.minConfidence));
+  }
   if (typeof raw.confirmTimeoutMs === 'number' && Number.isFinite(raw.confirmTimeoutMs) && raw.confirmTimeoutMs >= 0) {
     config.confirmTimeoutMs = Math.floor(raw.confirmTimeoutMs);
   }
@@ -65,29 +69,61 @@ function normalizeConfig(raw) {
 
 /* ----------------------------------------------------------------- prompts */
 
-const ANALYSIS_SYSTEM = [
-  'You maintain a long-term memory file for a coding assistant.',
-  'You are given the transcript of the turn that just finished, plus the current contents of the memory file.',
-  '',
-  'Extract only durable, reusable facts:',
-  '- user preferences and working style (language, formatting, tooling, naming)',
-  '- project facts that will still be true next week (stack, layout, commands, conventions, decisions and their reasons)',
-  '- corrections the user made about how the assistant should behave',
-  '',
-  'Do NOT extract:',
-  '- anything already present in the current memory file (near-duplicates included)',
-  '- anything in the DECLINED list (near-duplicates, restatements and rewrites included): the user already said no to it, and restating it in a later turn does not make it memorable',
-  '- transient task state, progress reports, or to-do items',
-  '- secrets, API keys, tokens, passwords',
-  '- facts only true for this one request',
-  '',
-  'Each memory must be one self-contained sentence or two that makes sense with no surrounding context.',
-  'Write each memory in the same language the user is using in the transcript.',
-  'Be strict: if a turn contains nothing durable, return an empty list. Most turns contain nothing durable.',
-  '',
-  'Answer with JSON only, no prose and no code fences, in exactly this shape:',
-  '{"memories":[{"text":"..."}]}',
-].join('\n');
+/** The kinds of memory the extractor is allowed to produce. */
+const MEMORY_KINDS = new Set(['preference', 'convention', 'command', 'decision', 'correction']);
+
+/**
+ * The extraction prompt.
+ *
+ * The bar is deliberately three-part and conjunctive: a fact has to be about
+ * this user or project, has to be something a fresh assistant could not read
+ * off the repository, and has to cost the user something if forgotten. The
+ * middle test is what keeps out "I learned how X works" — those are the items
+ * that made the file noisy, and they are all rediscoverable.
+ */
+function analysisSystemPrompt(maxItems) {
+  return [
+    'You maintain a long-term memory file for a coding assistant.',
+    'You are given the transcript of the turn that just finished, plus the current contents of the memory file.',
+    '',
+    'An item earns a place only if ALL THREE hold:',
+    '1. It is about THIS user or THIS project: a preference, a convention, a command, a constraint, or a decision with the reason behind it.',
+    '2. It is not general knowledge about a library, framework, or the environment. If a fresh assistant could look it up in documentation or a package\'s own source, it is not memory, even when it took you a while to find.',
+    '3. Forgetting it costs the user something: they would have to repeat themselves, or correct the assistant a second time.',
+    '',
+    'A requirement that shaped this project still counts after it is implemented. The resulting code can look self-explanatory while the reason behind it is nowhere in the repository, and that reason is exactly what belongs here.',
+    '',
+    'Worth recording:',
+    '- how the user wants the assistant to work (language, formatting, tooling, naming, review habits)',
+    '- project conventions, commands and layout that will still be true next week',
+    '- decisions the user made, with the reason, when that reason is not visible in the code',
+    '- corrections the user issued about how the assistant should behave',
+    '',
+    'These two always pass, regardless of the tests above:',
+    '- the user states directly how they want the assistant to behave ("be more conservative", "always answer in Chinese", "never run git push"): record it as one `preference` or `correction` item unless it is already in the file, even if that is the only thing in the turn',
+    '- the user states a requirement or constraint for this project that is not written down in it (a fixed setting, a deliberate restriction, a non-obvious ordering): record it as one `convention` or `decision` item',
+    '',
+    'Never record:',
+    '- API surface, library behaviour, environment capabilities, or how a tool works: the assistant can look these up, and verifying them is not the same as remembering',
+    '- what the assistant did in this turn, or what it learned while doing it',
+    '- anything already in the memory file, or a paraphrase of it',
+    '- anything in the DECLINED list or a rewording of it: the user already said no, and repeating it in a later turn does not make it memorable',
+    '- transient task state, progress, plans or to-do items',
+    '- secrets, API keys, tokens, passwords',
+    '- anything that only matters for this one request',
+    '',
+    'When a turn has nothing on the two lists above, record nothing: an empty list is the correct answer and the common case.',
+    `One solid memory is worth more than five plausible ones. Never return more than ${maxItems}.`,
+    '',
+    'Each memory is one self-contained sentence, written in the language the user is using in the transcript, understandable with no surrounding context.',
+    '',
+    'Answer with JSON only, no prose and no code fences, in exactly this shape:',
+    '{"memories":[{"kind":"preference|convention|command|decision|correction","confidence":0.0,"text":"..."}]}',
+    '',
+    '`confidence` is your honest probability that a careful reviewer would agree the item passes all three tests.',
+    'Do not inflate it. An item you would defend only weakly belongs at or below 0.5, and will be discarded.',
+  ].join('\n');
+}
 
 const ANALYSIS_USER = [
   'Current contents of the memory file (may be empty):',
@@ -105,7 +141,43 @@ const ANALYSIS_USER = [
   '<<<TRANSCRIPT',
   '{transcript}',
   'TRANSCRIPT>>>',
+  '',
+  'Judge strictly. An empty list is the normal answer.',
 ].join('\n');
+
+/**
+ * Keep only the candidates that survive the confidence gate.
+ *
+ * The prompt asks for `kind` and `confidence`, but a model can always answer in
+ * the older plain shape. If no entry carries a confidence, the gate is skipped
+ * and the list is taken as-is rather than silently dropping everything.
+ */
+function selectCandidates(list, options) {
+  const entries = Array.isArray(list) ? list : [];
+  const maxItems = options && options.maxItems > 0 ? options.maxItems : 3;
+  const minConfidence = options && typeof options.minConfidence === 'number' ? options.minConfidence : 0.7;
+  const maxChars = options && options.maxItemChars > 0 ? options.maxItemChars : 320;
+  const gated = entries.some((entry) => typeof entry?.confidence === 'number');
+  const seen = new Set();
+  const chosen = [];
+  for (const entry of entries) {
+    const text = String(entry?.text ?? '').replace(/\s+/g, ' ').trim();
+    if (!text) continue;
+    if (gated) {
+      const confidence = typeof entry?.confidence === 'number' ? entry.confidence : 0;
+      if (!(confidence >= minConfidence)) continue;
+      const kind = typeof entry?.kind === 'string' ? entry.kind.trim().toLowerCase() : '';
+      if (kind && !MEMORY_KINDS.has(kind)) continue;
+    }
+    const clipped = text.length > maxChars ? `${text.slice(0, maxChars)}…` : text;
+    const key = normalizeForCompare(clipped);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    chosen.push(clipped);
+    if (chosen.length >= maxItems) break;
+  }
+  return chosen;
+}
 
 /* ----------------------------------------------------------------- helpers */
 
@@ -192,6 +264,31 @@ function lastClosedTurn(session) {
   }
   return null;
 }
+
+/**
+ * The closing `turn/end` of one specific turn, or null when that turn has not
+ * closed yet. Used by `POST /scan` to re-run an older turn while tuning the
+ * extraction prompt, which otherwise only knows how to look at the newest one.
+ */
+function closedTurnAt(session, turn) {
+  let events;
+  try {
+    events = session.ownEvents();
+  } catch {
+    return null;
+  }
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (!event || event.type !== 'turn/end') continue;
+    if (event.data?.turn !== turn) continue;
+    const kind = event.data?.reason?.kind;
+    if (kind === 'completed' || kind === 'max-tokens') {
+      return { turn, seq: typeof event.seq === 'number' ? event.seq : null };
+    }
+    return null;
+  }
+  return null;
+}
 /** Pull the first JSON object out of a model answer, fences and prose included. */
 function extractJson(text) {
   const source = String(text ?? '').trim();
@@ -273,7 +370,7 @@ const DECLINED_VERSION = 1;
  * Pure helpers exported for the offline checks only; the Loader reads `apply`,
  * `inject` and `Config` and ignores everything else.
  */
-export const __internals = { fingerprint, similarity, restates, appendMemories, readDeclined };
+export const __internals = { fingerprint, similarity, restates, appendMemories, readDeclined, selectCandidates };
 
 /** Read the sidecar list of items the user refused to remember. */
 function readDeclined(path) {
@@ -508,6 +605,12 @@ export function apply(ctx, rawConfig) {
   let lastMemoryPath = null;
   /** Last analysis attempt, stage by stage: the only observability a plugin gets. */
   let lastRun = null;
+  /**
+   * What the extractor was actually shown, kept apart from `lastRun` so it
+   * survives into an `empty` verdict — "it found nothing, but what did it read?"
+   * is the question that matters when tuning the prompt.
+   */
+  let lastTranscript = null;
   function noteRun(phase, extra) {
     lastRun = Object.assign({ at: Date.now(), phase }, extra || {});
   }
@@ -779,6 +882,12 @@ export function apply(ctx, rawConfig) {
       return [];
     }
     const transcript = clampTail(rawTranscript, config.maxTranscriptChars);
+    lastTranscript = {
+      session: String(session.id),
+      turn,
+      chars: transcript.length,
+      preview: transcript.replace(/\s+/g, ' ').trim().slice(0, 240),
+    };
     noteRun('modelled', { turn, route, transcriptChars: transcript.length });
     const declinedBlock = declinedTexts.length === 0
       ? '(none)'
@@ -792,7 +901,7 @@ export function apply(ctx, rawConfig) {
     const request = {
       provider: route.provider,
       model: route.model,
-      system: ANALYSIS_SYSTEM,
+      system: analysisSystemPrompt(config.maxItems),
       messages: [{ role: 'user', content: [{ type: 'text', text: user }] }],
       maxTokens: 3000,
       temperature: 0,
@@ -811,19 +920,14 @@ export function apply(ctx, rawConfig) {
 
     const parsed = extractJson(collected.join(''));
     const list = Array.isArray(parsed?.memories) ? parsed.memories : [];
-    const seen = new Set();
-    const items = [];
-    for (const entry of list) {
-      const text = String(entry?.text ?? '').replace(/\s+/g, ' ').trim();
-      if (!text) continue;
-      const clipped = text.length > config.maxItemChars ? `${text.slice(0, config.maxItemChars)}…` : text;
-      const key = normalizeForCompare(clipped);
-      if (!key || seen.has(key)) continue;
-      seen.add(key);
-      items.push(clipped);
-      if (items.length >= config.maxItems) break;
-    }
-    return items;
+    // The gate is code, not just instructions: `confidence` and `kind` are the
+    // extractor's own claims, and a low-confidence or off-taxonomy item is
+    // dropped here rather than shown to the user and declined by hand.
+    return selectCandidates(list, {
+      maxItems: config.maxItems,
+      minConfidence: config.minConfidence,
+      maxItemChars: config.maxItemChars,
+    });
   }
 
   /* ------------------------------------------------------------ one analysis */
@@ -995,9 +1099,18 @@ export function apply(ctx, rawConfig) {
             writeJson(res, 404, { ok: false, error: 'no live session with that id' });
             return;
           }
-          const location = lastClosedTurn(live);
+          // `turn` is optional and exists for tuning the extraction prompt:
+          // re-running an older turn is the only way to A/B a prompt change
+          // without waiting for a conversation to produce a matching turn.
+          const wantedTurn = Number.isInteger(body?.turn) && body.turn > 0 ? body.turn : null;
+          const location = wantedTurn === null ? lastClosedTurn(live) : closedTurnAt(live, wantedTurn);
           if (location === null) {
-            writeJson(res, 409, { ok: false, error: 'that session has no completed turn yet' });
+            writeJson(res, 409, {
+              ok: false,
+              error: wantedTurn === null
+                ? 'that session has no completed turn yet'
+                : `turn ${wantedTurn} is not closed in that session`,
+            });
             return;
           }
           schedule(live, location.turn, location.seq);
@@ -1166,6 +1279,7 @@ export function apply(ctx, rawConfig) {
             })(),
             pendingBatches: pendingBatches.size,
             lastRun,
+            lastTranscript,
             triggers: 'turn/end with reason completed|max-tokens, top-level sessions only',
           });
           return;
