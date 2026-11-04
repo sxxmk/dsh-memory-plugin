@@ -15,13 +15,13 @@
  */
 
 import { createHash } from 'node:crypto';
-import { readFileSync, statSync, writeFileSync } from 'node:fs';
+import { readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 /* ------------------------------------------------------------------ config */
 
 /** Bumped whenever the Host half changes, so `/status` can prove what is loaded. */
-const PLUGIN_BUILD = 'dsh-memory-plugin/1.3.5';
+const PLUGIN_BUILD = 'dsh-memory-plugin/1.4.2';
 
 const DEFAULTS = {
   enabled: true,
@@ -289,6 +289,31 @@ function closedTurnAt(session, turn) {
   }
   return null;
 }
+/**
+ * Whether this session currently has a turn open.
+ *
+ * Read from the log tail rather than tracked with an event counter. A counter
+ * misses the `turn/start` of a turn that was already running when the plugin
+ * loaded — a mid-turn reload is normal here — and from then on every later turn
+ * looks closed. The tail is stateless, so it is right after any reload, and it
+ * stops at the first boundary: two comparisons in the common case.
+ */
+function turnIsOpen(session) {
+  if (!session) return false;
+  let events;
+  try {
+    events = session.ownEvents();
+  } catch {
+    return false;
+  }
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const type = events[index]?.type;
+    if (type === 'turn/end') return false;
+    if (type === 'turn/start') return true;
+  }
+  return false;
+}
+
 /** Pull the first JSON object out of a model answer, fences and prose included. */
 function extractJson(text) {
   const source = String(text ?? '').trim();
@@ -405,6 +430,41 @@ function appendDeclined(path, lines) {
     items: merged.map((text) => ({ text, declinedAt: now })),
   }, null, 2)}\n`, 'utf8');
   return fresh.length;
+}
+
+/**
+ * Settings the user can change from the sidebar.
+ *
+ * Kept beside the memory file rather than in the profile patch: the strictness
+ * of extraction is a property of this project's memory, and the file lives next
+ * to the data it governs, so it travels with the workspace and stays editable by
+ * hand. A missing or broken file simply means "use the bundle default".
+ */
+const SETTINGS_FILE = '.dsh-memory-config.json';
+
+function settingsPathFor(memoryPath) {
+  return join(dirname(memoryPath), SETTINGS_FILE);
+}
+
+/** Read the workspace overrides; `{}` when the file is absent or unusable. */
+function readSettings(memoryPath) {
+  try {
+    const parsed = JSON.parse(readFileSync(settingsPathFor(memoryPath), 'utf8'));
+    const settings = {};
+    if (typeof parsed?.minConfidence === 'number' && Number.isFinite(parsed.minConfidence)) {
+      settings.minConfidence = Math.min(1, Math.max(0, parsed.minConfidence));
+    }
+    return settings;
+  } catch {
+    return {};
+  }
+}
+
+/** Merge one change into the workspace overrides and return what was stored. */
+function writeSettings(memoryPath, patch) {
+  const next = Object.assign({}, readSettings(memoryPath), patch);
+  writeFileSync(settingsPathFor(memoryPath), `${JSON.stringify(next, null, 2)}\n`, 'utf8');
+  return next;
 }
 
 const MEMORY_HEADER = [
@@ -696,6 +756,13 @@ export function apply(ctx, rawConfig) {
     return join(directory, config.file);
   }
 
+  /** The enforcement threshold: this workspace's own setting, else the bundle's. */
+  function effectiveMinConfidence(memoryPath) {
+    if (!memoryPath) return config.minConfidence;
+    const stored = readSettings(memoryPath);
+    return typeof stored.minConfidence === 'number' ? stored.minConfidence : config.minConfidence;
+  }
+
   /* --------------------------------------------------- system prompt side */
 
   function registerPromptContext(agent) {
@@ -923,9 +990,10 @@ export function apply(ctx, rawConfig) {
     // The gate is code, not just instructions: `confidence` and `kind` are the
     // extractor's own claims, and a low-confidence or off-taxonomy item is
     // dropped here rather than shown to the user and declined by hand.
+    // The sidebar's slider, when the user touched it, overrides the bundle.
     return selectCandidates(list, {
       maxItems: config.maxItems,
-      minConfidence: config.minConfidence,
+      minConfidence: effectiveMinConfidence(memoryPathFor(session)),
       maxItemChars: config.maxItemChars,
     });
   }
@@ -1126,22 +1194,85 @@ export function apply(ctx, rawConfig) {
             return;
           }
           const entries = readEntries(path);
+          const stored = readSettings(path);
+          const liveSession = (() => {
+            try {
+              return sessionId ? ctx.sessions.get(sessionId) : undefined;
+            } catch {
+              return undefined;
+            }
+          })();
           writeJson(res, 200, {
             ok: true,
             path,
             entries,
             declined: readDeclined(declinedPathFor(path)).length,
-            analysing: (analysing.get(sessionId) ?? 0) > 0,
+            // An open turn hides the pill. The extraction being announced
+            // belongs to the turn that already closed, and an LLM call easily
+            // outlives the gap between turns — so without this the pill shows up
+            // while the user is watching the *next* turn work, which reads as a
+            // trigger that fired before the answer had even finished.
+            analysing: (analysing.get(sessionId) ?? 0) > 0 && !turnIsOpen(liveSession),
+            settings: {
+              minConfidence: effectiveMinConfidence(path),
+              minConfidenceDefault: config.minConfidence,
+              minConfidenceOverridden: typeof stored.minConfidence === 'number',
+            },
             route: (() => {
               try {
-                const live = sessionId ? ctx.sessions.get(sessionId) : undefined;
-                return live ? resolveRoute(live) ?? null : null;
+                return liveSession ? resolveRoute(liveSession) ?? null : null;
               } catch {
                 return null;
               }
             })(),
             lastRun: lastRun && lastRun.session === sessionId ? lastRun : null,
           });
+          return;
+        }
+
+        if (method === '/settings' && req.method === 'POST') {
+          let body;
+          try {
+            body = await readJsonBody(req);
+          } catch (error) {
+            writeJson(res, 400, { ok: false, error: `bad body: ${error?.message ?? error}` });
+            return;
+          }
+          const sessionId = String(body?.session ?? '');
+          const path = memoryPathForSessionId(sessionId);
+          if (path === null) {
+            writeJson(res, 409, { ok: false, error: 'no memory file known yet' });
+            return;
+          }
+          const raw = body?.minConfidence;
+          if (typeof raw !== 'number' || !Number.isFinite(raw) || raw < 0 || raw > 1) {
+            writeJson(res, 400, { ok: false, error: 'minConfidence must be a number between 0 and 1' });
+            return;
+          }
+          const rounded = Math.round(raw * 100) / 100;
+          // Setting the value back to the bundle default removes the override
+          // instead of pinning it: "reset" has to mean "follow the bundle again",
+          // or a later default change would never reach this workspace.
+          const isDefault = Math.abs(rounded - config.minConfidence) < 1e-9;
+          try {
+            if (isDefault) {
+              rmSync(settingsPathFor(path), { force: true });
+            } else {
+              writeSettings(path, { minConfidence: rounded });
+            }
+            log('info', `minConfidence for ${path} set to ${rounded}${isDefault ? ' (default, override removed)' : ''}`);
+            writeJson(res, 200, {
+              ok: true,
+              path,
+              settings: {
+                minConfidence: rounded,
+                minConfidenceDefault: config.minConfidence,
+                minConfidenceOverridden: !isDefault,
+              },
+            });
+          } catch (error) {
+            writeJson(res, 500, { ok: false, error: error?.message ?? String(error) });
+          }
           return;
         }
 
@@ -1278,6 +1409,17 @@ export function apply(ctx, rawConfig) {
               }
             })(),
             pendingBatches: pendingBatches.size,
+            // Which sessions are mid-turn right now, so "the pill is hidden"
+            // has an explanation instead of looking broken.
+            turnsOpen: (() => {
+              try {
+                return ctx.sessions.list()
+                  .filter((session) => turnIsOpen(session))
+                  .map((session) => String(session.id));
+              } catch {
+                return [];
+              }
+            })(),
             lastRun,
             lastTranscript,
             triggers: 'turn/end with reason completed|max-tokens, top-level sessions only',

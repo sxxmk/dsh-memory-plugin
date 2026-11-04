@@ -38,6 +38,12 @@ dsh plugin --profile web add github:sxxmk/dsh-memory-plugin
 
 只有 `- ` 开头的行算记忆，文件里其他内容原样保留，插件不动。
 
+## 侧边栏的严格度滑块
+
+右侧 **记忆** 面板顶部有一个「提取严格度」滑杆，直接调 `minConfidence`：往右越严格、记得越少，往左越宽松。改动即时生效，下一轮分析就按新值过滤。
+
+设置是**按工作区**存的，写在记忆文件旁边的 `.dsh-memory-config.json` 里，所以它跟着项目走，也可以手改。拖回默认值（0.6）会把这个文件删掉——"恢复默认"意味着重新跟随 bundle 配置，而不是把默认值钉死，否则以后 bundle 改了默认值也不会传到这里。
+
 ## 配置
 
 默认值写在 `cordis.patch.yml`，要在 profile 自己的 patch 里覆盖，用 id 定位：

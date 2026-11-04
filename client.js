@@ -73,6 +73,15 @@ window.__ModuleLoader__.load({
       return selected.indexOf(itemId) !== -1;
     }
 
+    /** The word for a strictness value, so the number has a meaning. */
+    function strictnessWord(strings, value) {
+      const number = Number(value);
+      if (!Number.isFinite(number)) return '';
+      if (number <= 0.45) return strings.strictnessLoose;
+      if (number >= 0.8) return strings.strictnessStrict;
+      return strings.strictnessBalanced;
+    }
+
     /** Normalize the Host batch into the shape this dialog renders. */
     function normalizeBatch(pending) {
       if (!pending || typeof pending !== 'object') return null;
@@ -129,6 +138,13 @@ window.__ModuleLoader__.load({
         analyseFailed: '上次自动提取失败：{msg}',
         noSession: '还没有会话，打开一个对话后再看。',
         inlineHint: '确认后才写入，未勾选的不再提',
+        strictness: '提取严格度',
+        strictnessHint: '越高越少记。低于此分数的候选直接丢弃，连卡片都不弹。',
+        strictnessLoose: '宽松',
+        strictnessBalanced: '适中',
+        strictnessStrict: '严格',
+        strictnessReset: '恢复默认',
+        strictnessSaved: '严格度已保存',
       },
       en: {
         tab: 'Memory',
@@ -158,6 +174,13 @@ window.__ModuleLoader__.load({
         analyseFailed: 'Last extraction failed: {msg}',
         noSession: 'Open a conversation first.',
         inlineHint: 'Written only once you confirm; unticked items are never offered again',
+        strictness: 'Extraction strictness',
+        strictnessHint: 'Higher records less. Candidates scoring below it are dropped before any card appears.',
+        strictnessLoose: 'Loose',
+        strictnessBalanced: 'Balanced',
+        strictnessStrict: 'Strict',
+        strictnessReset: 'Reset',
+        strictnessSaved: 'Strictness saved',
       },
     };
 
@@ -347,6 +370,52 @@ window.__ModuleLoader__.load({
   line-height: 1.5;
   color: var(--dsw-alias-label-tertiary, var(--dsw-alias-label-secondary));
   overflow-wrap: anywhere;
+}
+.dsh-memory-panel__strict {
+  padding: 2px 12px 10px 12px;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+}
+.dsh-memory-panel__strict-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.dsh-memory-panel__strict-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+.dsh-memory-panel__strict-value {
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--dsw-alias-state-business-primary, var(--dsw-alias-label-secondary));
+}
+.dsh-memory-panel__strict-reset {
+  margin-left: auto;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary, var(--dsw-alias-label-secondary));
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.dsh-memory-panel__strict-reset:hover {
+  color: var(--dsw-alias-label-primary);
+}
+.dsh-memory-panel__slider {
+  display: block;
+  width: 100%;
+  margin: 6px 0 2px 0;
+  accent-color: var(--dsw-alias-state-business-primary, var(--dsw-alias-brand-primary));
+  cursor: pointer;
+}
+.dsh-memory-panel__strict-hint {
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--dsw-alias-label-tertiary, var(--dsw-alias-label-secondary));
 }
 .dsh-memory-note {
   position: relative;
@@ -603,39 +672,42 @@ window.__ModuleLoader__.load({
       const sessionId = props && props.sessionId ? String(props.sessionId) : '';
       const strings = stringsFor(locale) && PANEL_STRINGS[stringsFor(locale) === STRINGS.zh ? 'zh' : 'en'];
 
-      const [state, setState] = React.useState({ loading: true, entries: [], path: '', declined: 0, lastRun: null, error: '' });
+      const [state, setState] = React.useState({ loading: true, entries: [], path: '', declined: 0, lastRun: null, error: '', settings: null });
       const [notice, setNotice] = React.useState({ kind: '', text: '' });
       const [draft, setDraft] = React.useState(null);
       const [confirmingId, setConfirmingId] = React.useState('');
       const [busy, setBusy] = React.useState(false);
       const mountedRef = React.useRef(true);
+      const saveTimerRef = React.useRef(null);
 
       const load = React.useCallback(function load() {
         if (!sessionId) {
-          setState({ loading: false, entries: [], path: '', declined: 0, error: strings.noSession });
+          setState({ loading: false, entries: [], path: '', declined: 0, error: strings.noSession, settings: null });
           return;
         }
         readMemories(sessionId).then(function apply(value) {
           if (!mountedRef.current) return;
-          setState({
-            loading: false,
-            entries: Array.isArray(value.entries) ? value.entries : [],
-            path: typeof value.path === 'string' ? value.path : '',
-            declined: typeof value.declined === 'number' ? value.declined : 0,
-            lastRun: value.lastRun || null,
-            error: value.ok === false ? (value.error || strings.failed) : '',
+          setState(function merge(current) {
+            return {
+              loading: false,
+              entries: Array.isArray(value.entries) ? value.entries : [],
+              path: typeof value.path === 'string' ? value.path : '',
+              declined: typeof value.declined === 'number' ? value.declined : 0,
+              lastRun: value.lastRun || null,
+              error: value.ok === false ? (value.error || strings.failed) : '',
+              // While a save is in flight the local value is ahead of the
+              // Host's; keep it so the slider does not jump back under the
+              // user's finger.
+              settings: saveTimerRef.current !== null && current.settings ? current.settings : (value.settings || null),
+            };
           });
         }, function failed(error) {
           if (!mountedRef.current) return;
           setState(function keep(current) {
-            return {
+            return Object.assign({}, current, {
               loading: false,
-              entries: current.entries,
-              path: current.path,
-              declined: current.declined,
-              lastRun: current.lastRun,
               error: (error && error.message) || strings.failed,
-            };
+            });
           });
         });
       }, [sessionId, strings]);
@@ -647,8 +719,39 @@ window.__ModuleLoader__.load({
         return function unmount() {
           mountedRef.current = false;
           clearInterval(timer);
+          if (saveTimerRef.current !== null) clearTimeout(saveTimerRef.current);
         };
       }, [load]);
+
+      /**
+       * Persist the strictness slider. The move is optimistic and the write is
+       * debounced: dragging fires a change per pixel, and only the value the
+       * user settled on is worth a request.
+       */
+      const saveStrictness = React.useCallback(function saveStrictness(next) {
+        setState(function merge(current) {
+          const base = current.settings || { minConfidence: next, minConfidenceDefault: next, minConfidenceOverridden: true };
+          return Object.assign({}, current, {
+            settings: Object.assign({}, base, { minConfidence: next, minConfidenceOverridden: true }),
+          });
+        });
+        if (saveTimerRef.current !== null) clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = setTimeout(function commit() {
+          saveTimerRef.current = null;
+          postJson(routeUrl('dsh-memory-plugin/settings'), { session: sessionId, minConfidence: next })
+            .then(function saved(value) {
+              if (!mountedRef.current) return;
+              if (value && value.settings) {
+                setState(function merge(current) { return Object.assign({}, current, { settings: value.settings }); });
+              }
+              setNotice({ kind: 'ok', text: strings.strictnessSaved });
+            }, function failed(error) {
+              if (!mountedRef.current) return;
+              setNotice({ kind: 'error', text: (error && error.message) || strings.failed });
+              load();
+            });
+        }, 450);
+      }, [sessionId, strings, load]);
 
       const submit = React.useCallback(function submit(action, payload) {
         if (busy) return;
@@ -806,6 +909,35 @@ window.__ModuleLoader__.load({
         state.path
           ? h('div', { className: 'dsh-memory-panel__meta' }, strings.file + ': ' + state.path
               + (state.declined > 0 ? '  ·  ' + strings.declined.replace('{n}', String(state.declined)) : ''))
+          : null,
+        state.settings
+          ? h('div', { className: 'dsh-memory-panel__strict' },
+              h('div', { className: 'dsh-memory-panel__strict-head' },
+                h('span', { className: 'dsh-memory-panel__strict-label' }, strings.strictness),
+                h('span', { className: 'dsh-memory-panel__strict-value' },
+                  strictnessWord(strings, state.settings.minConfidence)
+                  + '  ' + Number(state.settings.minConfidence).toFixed(2)),
+                state.settings.minConfidenceOverridden
+                  ? h('button', {
+                      type: 'button',
+                      className: 'dsh-memory-panel__strict-reset',
+                      title: strings.strictnessReset,
+                      onClick: function reset() { saveStrictness(state.settings.minConfidenceDefault); },
+                    }, strings.strictnessReset)
+                  : null
+              ),
+              h('input', {
+                type: 'range',
+                className: 'dsh-memory-panel__slider',
+                min: 0,
+                max: 1,
+                step: 0.05,
+                value: Number(state.settings.minConfidence),
+                'aria-label': strings.strictness,
+                onChange: function onSlide(event) { saveStrictness(Number(event.target.value)); },
+              }),
+              h('div', { className: 'dsh-memory-panel__strict-hint' }, strings.strictnessHint)
+            )
           : null,
         notice.text
           ? h('div', {

@@ -4,8 +4,10 @@ node_modules/
 # Plugin runtime artefacts — user data, never committed:
 #   MEMORY.md                  memories belong to a workspace, not to this repo
 #   .dsh-memory-declined.json  refusal sidecar
+#   .dsh-memory-config.json    per-workspace settings from the sidebar
 MEMORY.md
 .dsh-memory-declined.json
+.dsh-memory-config.json
 
 # Logs / scratch
 *.log
