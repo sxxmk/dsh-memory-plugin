@@ -640,7 +640,9 @@ window.__ModuleLoader__.load({
         failed: '操作失败',
         refresh: '刷新',
         declined: '已拒绝 {n} 条（不会再被提议）',
-        extracting: '正在提取记忆…',
+        extracting: '正在提取记忆',
+        extractingSlow: '仍在提取记忆，稍候',
+        extractingLonger: '提取还在继续，可以先做别的',
         analyseFailed: '上次自动提取失败：{msg}',
         noSession: '还没有会话，打开一个对话后再看。',
       },
@@ -666,7 +668,9 @@ window.__ModuleLoader__.load({
         failed: 'Operation failed',
         refresh: 'Refresh',
         declined: '{n} declined (never offered again)',
-        extracting: 'Extracting memory…',
+        extracting: 'Extracting memory',
+        extractingSlow: 'Still extracting, one moment',
+        extractingLonger: 'Extraction continues — you can keep working',
         analyseFailed: 'Last extraction failed: {msg}',
         noSession: 'Open a conversation first.',
       },
@@ -860,25 +864,80 @@ window.__ModuleLoader__.load({
   overflow-wrap: anywhere;
 }
 .dsh-memory-note {
-  display: flex;
+  position: relative;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 10px;
+  gap: 9px;
+  align-self: flex-start;
+  max-width: 100%;
+  margin: 6px 0 2px 2px;
+  padding: 5px 13px 5px 11px;
+  border-radius: 999px;
   font-family: var(--dsw-font-family, inherit);
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--dsw-alias-label-secondary);
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.4;
+  letter-spacing: 0.01em;
+  color: var(--dsw-alias-brand-primary);
+  background: var(--dsw-alias-bg-layer-1);
+  background: color-mix(in srgb, var(--dsw-alias-brand-primary) 9%, transparent);
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-color: color-mix(in srgb, var(--dsw-alias-brand-primary) 30%, var(--dsw-alias-border-l1));
+  user-select: none;
+  animation: dsh-memory-note-enter 240ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 .dsh-memory-note__dot {
+  position: relative;
+  flex: none;
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--dsw-alias-brand-primary);
-  animation: dsh-memory-note-pulse 1.1s ease-in-out infinite;
+  background: currentColor;
 }
-@keyframes dsh-memory-note-pulse {
-  0%, 100% { opacity: 0.35; transform: scale(0.85); }
-  50% { opacity: 1; transform: scale(1); }
+.dsh-memory-note__dot::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+  opacity: 0.5;
+  animation: dsh-memory-note-ripple 1.9s ease-out infinite;
+}
+.dsh-memory-note__text { white-space: nowrap; }
+.dsh-memory-note__dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 2.5px;
+  margin-left: -4px;
+}
+.dsh-memory-note__dots i {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.22;
+  animation: dsh-memory-note-dot 1.35s ease-in-out infinite;
+}
+.dsh-memory-note__dots i:nth-child(2) { animation-delay: 0.18s; }
+.dsh-memory-note__dots i:nth-child(3) { animation-delay: 0.36s; }
+@keyframes dsh-memory-note-enter {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes dsh-memory-note-ripple {
+  0% { transform: scale(1); opacity: 0.5; }
+  70%, 100% { transform: scale(2.8); opacity: 0; }
+}
+@keyframes dsh-memory-note-dot {
+  0%, 70%, 100% { opacity: 0.22; }
+  35% { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dsh-memory-note,
+  .dsh-memory-note__dot::after,
+  .dsh-memory-note__dots i { animation: none; }
+  .dsh-memory-note__dot::after { opacity: 0; }
+  .dsh-memory-note__dots i { opacity: 0.55; }
 }
 `;
 
@@ -1155,14 +1214,21 @@ window.__ModuleLoader__.load({
     }
 
     /**
-     * `conversation.composer.dock` entry: a quiet note while this session's turn
-     * is being mined for memories, so the popup that follows is not a surprise.
+     * `conversation.composer.dock` entry: a brand-tinted pill while this session's
+     * turn is being mined for memories.
+     *
+     * Three things make it readable without making it loud: a filled pill instead
+     * of loose grey text, a slow breathing halo (a blink would be either invisible
+     * or irritating), and copy that changes as the wait grows, because information
+     * earns attention where decoration does not.
      */
     function MemoryAnalysingNote(props) {
       const locale = props && props.locale ? props.locale : undefined;
       const sessionId = props && props.sessionId ? String(props.sessionId) : '';
       const strings = stringsFor(locale) === STRINGS.zh ? PANEL_STRINGS.zh : PANEL_STRINGS.en;
-      const [busy, setBusy] = React.useState(false);
+      const [running, setRunning] = React.useState(false);
+      const [visible, setVisible] = React.useState(false);
+      const [stage, setStage] = React.useState(0);
       const mountedRef = React.useRef(true);
 
       React.useEffect(function watch() {
@@ -1172,7 +1238,7 @@ window.__ModuleLoader__.load({
         const tick = function tick() {
           readMemories(sessionId).then(function apply(value) {
             if (!mountedRef.current) return;
-            setBusy(value && value.ok !== false && value.analysing === true);
+            setRunning(value && value.ok !== false && value.analysing === true);
           }, function ignore() { /* the Host may be restarting */ });
         };
         tick();
@@ -1183,11 +1249,40 @@ window.__ModuleLoader__.load({
         };
       }, [sessionId]);
 
-      if (!busy) return null;
+      /* Appear the moment a run starts, linger a beat after it ends: the 1.5 s
+       * poll would otherwise blink the pill whenever a sample lands between the
+       * turn ending and the analysis beginning. */
+      React.useEffect(function holdVisible() {
+        if (running) {
+          setVisible(true);
+          return undefined;
+        }
+        if (!visible) return undefined;
+        const timer = setTimeout(function hide() { setVisible(false); }, 1200);
+        return function cancel() { clearTimeout(timer); };
+      }, [running, visible]);
+
+      React.useEffect(function stageCopy() {
+        if (!running) {
+          setStage(0);
+          return undefined;
+        }
+        const slow = setTimeout(function markSlow() { setStage(1); }, 9000);
+        const longer = setTimeout(function markLonger() { setStage(2); }, 30000);
+        return function cancel() {
+          clearTimeout(slow);
+          clearTimeout(longer);
+        };
+      }, [running]);
+
+      if (!visible) return null;
+      const label = stage === 2 ? strings.extractingLonger : stage === 1 ? strings.extractingSlow : strings.extracting;
       return h('div', { className: 'dsh-memory-note', role: 'status', 'aria-live': 'polite' },
         h('style', null, PANEL_CSS),
         h('span', { className: 'dsh-memory-note__dot', 'aria-hidden': true }),
-        h('span', null, strings.extracting)
+        h('span', { className: 'dsh-memory-note__text' }, label),
+        h('span', { className: 'dsh-memory-note__dots', 'aria-hidden': true },
+          h('i', null), h('i', null), h('i', null))
       );
     }
 
